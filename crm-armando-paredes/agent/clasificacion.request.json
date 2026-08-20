@@ -1,0 +1,82 @@
+{
+  "model": "claude-opus-4-8",
+  "max_tokens": 1024,
+  "system": [
+    {
+      "type": "text",
+      "text": "{{ $vars.SOFIA_SYSTEM_PROMPT }}",
+      "cache_control": { "type": "ephemeral" }
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": "<INVENTARIO_DISPONIBLE>\n{{ $json.inventario }}\n</INVENTARIO_DISPONIBLE>\n\n<PERFIL_PROSPECTO>\nnombre: {{ $json.prospecto.nombre }}\nscore_actual: {{ $json.prospecto.score }}\netapa: {{ $json.prospecto.etapa }}\ntipo_compra: {{ $json.prospecto.tipoCompra }}\npresupuesto: {{ $json.prospecto.presupuesto }}\nhipoteca_preaprobada: {{ $json.prospecto.hipotecaPreAprobada }}\n</PERFIL_PROSPECTO>\n\n<HISTORIAL_RECIENTE>\n{{ $json.historial }}\n</HISTORIAL_RECIENTE>\n\nMensaje nuevo del prospecto por WhatsApp:\n\"{{ $json.mensaje }}\""
+    }
+  ],
+  "output_config": {
+    "format": {
+      "type": "json_schema",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "intencion": {
+            "type": "string",
+            "enum": ["COMPRAR", "INVERTIR", "EXPLORAR", "OTRO"]
+          },
+          "urgencia": {
+            "type": "string",
+            "enum": ["ALTA", "MEDIA", "BAJA"]
+          },
+          "presupuesto_detectado": {
+            "type": ["number", "null"]
+          },
+          "señales_cierre": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "escalar_a_humano": { "type": "boolean" },
+          "razon_escalar": { "type": ["string", "null"] },
+          "respuesta_sugerida": { "type": "string" },
+          "eventos_score": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "tipo": {
+                  "type": "string",
+                  "enum": [
+                    "ABRIO_BROCHURE",
+                    "RESPUESTA_RAPIDA",
+                    "PIDIO_FINANCIAMIENTO",
+                    "PREGUNTO_PAGO_ESCRITURA",
+                    "PRIMERA_VISITA",
+                    "SEGUNDA_VISITA",
+                    "CODECISOR_CONTACTO",
+                    "HIPOTECA_PREAPROBADA",
+                    "MUDANZA_PROXIMA",
+                    "PIDIO_BAJAR_PRECIO"
+                  ]
+                },
+                "puntos": { "type": "integer" }
+              },
+              "required": ["tipo", "puntos"]
+            }
+          }
+        },
+        "required": [
+          "intencion",
+          "urgencia",
+          "presupuesto_detectado",
+          "señales_cierre",
+          "escalar_a_humano",
+          "razon_escalar",
+          "respuesta_sugerida",
+          "eventos_score"
+        ]
+      }
+    }
+  }
+}

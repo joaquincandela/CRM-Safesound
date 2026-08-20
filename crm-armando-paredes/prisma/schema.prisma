@@ -1,0 +1,654 @@
+// ============================================================================
+// SafeSound CRM + ERP
+// Sistema de gestión interna para SafeSound
+//
+// Stack: PostgreSQL + Prisma ORM
+// Convención: montos en Decimal(12,2) (USD/PEN), fechas en UTC.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7: la URL de conexión se define en prisma.config.ts, no aquí.
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+/// Rol de usuario en el sistema.
+enum RolUsuario {
+  ADMIN
+  VENTAS
+  INVENTARIO
+  OPERACIONES
+  INFLUENCER
+}
+
+/// Tipo de cliente (B2C o B2B).
+enum TipoCliente {
+  PERSONA
+  EMPRESA
+}
+
+/// Tipo de documento de identidad.
+enum TipoDocumento {
+  DNI
+  RUC
+  CE
+  PASAPORTE
+  OTRO
+}
+
+/// Estado de un pedido.
+enum EstadoPedido {
+  PENDIENTE
+  PAGADO
+  PREPARANDO
+  ENVIADO
+  ENTREGADO
+  CANCELADO
+}
+
+/// Estado de una orden de compra.
+enum EstadoOrdenCompra {
+  BORRADOR
+  CONFIRMADA
+  EN_FABRICACION
+  EN_TRANSITO
+  RECIBIDA
+  CANCELADA
+}
+
+/// Estado de un costeo de importación.
+enum EstadoCosteo {
+  BORRADOR
+  CONFIRMADO
+}
+
+/// Tipo de movimiento de inventario.
+enum TipoMovimiento {
+  ENTRADA
+  SALIDA
+  AJUSTE_POSITIVO
+  AJUSTE_NEGATIVO
+  VENTA
+  DEVOLUCION_CLIENTE
+  DEVOLUCION_PROVEEDOR
+}
+
+/// Tipo de referencia para un movimiento de inventario.
+enum TipoReferencia {
+  PEDIDO
+  ORDEN_COMPRA
+  RECEPCION
+  AJUSTE
+  DEVOLUCION
+}
+
+/// Estado de un producto.
+enum EstadoProducto {
+  ACTIVO
+  INACTIVO
+}
+
+/// Tipo de comprobante de gasto.
+enum TipoComprobante {
+  FACTURA
+  BOLETA
+  RECIBO
+  TICKET
+  OTRO
+}
+
+/// Estado de procesamiento de un mensaje entrante en la cola.
+enum EstadoMensaje {
+  PENDIENTE
+  PROCESADO
+  ERROR
+}
+
+/// Canal de origen de un mensaje entrante.
+enum CanalMensaje {
+  WHATSAPP
+  FORMULARIO_WEB
+  EMAIL
+  API
+}
+
+// ============================================================================
+// MODELOS
+// ============================================================================
+
+/// Usuario del sistema.
+model Usuario {
+  id           String   @id @default(cuid())
+  nombre       String
+  email        String   @unique
+  telefono     String?
+  passwordHash String // Bcrypt — para login JWT
+  rol          RolUsuario @default(VENTAS)
+  activo       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relaciones
+  interacciones   Interaccion[]
+  movimientos     MovimientoInventario[]
+  gastos          Gasto[]
+  recepciones     RecepcionMercaderia[]
+  influencer      Influencer?
+  tareasCalendario TareaCalendario[]
+  costeos         CosteoImportacion[]
+
+  @@index([activo])
+  @@index([rol])
+  @@map("usuarios")
+}
+
+/// Tarea personal en el calendario de un usuario.
+model TareaCalendario {
+  id          String   @id @default(cuid())
+  usuarioId   String
+  titulo      String
+  descripcion String?
+  fecha       DateTime // día (se guarda a medianoche UTC)
+  hora        String?  // opcional "HH:mm"
+  completada  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, fecha])
+  @@map("tareas_calendario")
+}
+
+/// Categoría de productos.
+model Categoria {
+  id          String   @id @default(cuid())
+  nombre      String   @unique
+  descripcion String?
+  activo      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  productos Producto[]
+
+  @@index([activo])
+  @@map("categorias")
+}
+
+/// Producto del inventario.
+model Producto {
+  id                    String        @id @default(cuid())
+  sku                   String        @unique
+  nombre                String
+  descripcion           String?
+  categoriaId           String
+  costoUnitario         Decimal       @db.Decimal(12, 2)
+  precioVenta           Decimal       @db.Decimal(12, 2)
+  stockMinimo           Int           @default(0)
+  estado                EstadoProducto @default(ACTIVO)
+  imagenUrl             String?
+  ultimaImportacionFecha DateTime?    // Última recepción costeada (solo lectura)
+  ultimoCosteoId        String?       // Costeo de importación que fijó el costo real
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  // Relaciones
+  categoria       Categoria            @relation(fields: [categoriaId], references: [id], onDelete: Restrict)
+  movimientos     MovimientoInventario[]
+  lineasPedido    LineaPedido[]
+  lineasOrden     LineaOrdenCompra[]
+  lineasRecepcion LineaRecepcion[]
+  lotes           LoteImportacion[]
+  ultimoCosteo    CosteoImportacion?   @relation(fields: [ultimoCosteoId], references: [id], onDelete: SetNull)
+
+  @@index([categoriaId])
+  @@index([estado])
+  @@index([sku])
+  @@map("productos")
+}
+
+/// Cliente (B2C o B2B).
+model Cliente {
+  id               String          @id @default(cuid())
+  tipo             TipoCliente     @default(PERSONA)
+  nombre           String
+  apellido         String?
+  razonSocial      String? // Para EMPRESA
+  tipoDocumento    TipoDocumento
+  numeroDocumento  String
+  email            String?
+  telefono         String
+  direccion        String?
+  activo           Boolean         @default(true)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  // Relaciones
+  pedidos       Pedido[]
+  interacciones Interaccion[]
+
+  @@index([tipo])
+  @@index([numeroDocumento])
+  @@index([activo])
+  @@map("clientes")
+}
+
+/// Pedido de venta.
+model Pedido {
+  id               String       @id @default(cuid())
+  numero           String       @unique
+  clienteId        String?
+  clienteNombre    String?
+  clienteTelefono  String?
+  clienteEmail     String?
+  clienteDocumento String?
+  clienteDireccion String?
+  estado           EstadoPedido @default(PENDIENTE)
+  subtotal         Decimal      @db.Decimal(12, 2)
+  descuento        Decimal      @db.Decimal(12, 2) @default(0)
+  igv              Decimal      @db.Decimal(12, 2) @default(0)
+  total            Decimal      @db.Decimal(12, 2)
+  notas            String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  // Relaciones
+  cliente Cliente?    @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  lineas  LineaPedido[]
+
+  @@index([clienteId])
+  @@index([estado])
+  @@index([createdAt])
+  @@map("pedidos")
+}
+
+/// Línea de pedido.
+model LineaPedido {
+  id          String   @id @default(cuid())
+  pedidoId    String
+  productoId  String
+  cantidad    Int
+  precioUnitario Decimal @db.Decimal(12, 2)
+  subtotal    Decimal  @db.Decimal(12, 2)
+
+  // Relaciones
+  pedido   Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  producto Producto @relation(fields: [productoId], references: [id], onDelete: Restrict)
+
+  @@index([pedidoId])
+  @@index([productoId])
+  @@map("lineas_pedido")
+}
+
+/// Proveedor.
+model Proveedor {
+  id              String   @id @default(cuid())
+  tipoDocumento   TipoDocumento
+  numeroDocumento String   @unique
+  razonSocial     String
+  nombreComercial String?
+  contacto        String?
+  email           String?
+  telefono        String?
+  direccion       String?
+  pais            String?
+  activo          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relaciones
+  ordenes OrdenCompra[]
+  gastos  Gasto[]
+  costeos CosteoImportacion[]
+
+  @@index([activo])
+  @@index([numeroDocumento])
+  @@map("proveedores")
+}
+
+/// Orden de compra.
+model OrdenCompra {
+  id             String             @id @default(cuid())
+  numero         String             @unique
+  proveedorId    String
+  estado         EstadoOrdenCompra  @default(BORRADOR)
+  moneda         String             @default("USD")
+  subtotal       Decimal            @db.Decimal(12, 2)
+  impuestos      Decimal            @db.Decimal(12, 2) @default(0)
+  total          Decimal            @db.Decimal(12, 2)
+  fechaOrden     DateTime           @default(now())
+  fechaEstimada  DateTime?
+  notas          String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  // Relaciones
+  proveedor   Proveedor             @relation(fields: [proveedorId], references: [id], onDelete: Restrict)
+  lineas      LineaOrdenCompra[]
+  recepciones RecepcionMercaderia[]
+  costeos     CosteoImportacion[]
+
+  @@index([proveedorId])
+  @@index([estado])
+  @@index([fechaOrden])
+  @@map("ordenes_compra")
+}
+
+/// Línea de orden de compra.
+model LineaOrdenCompra {
+  id            String   @id @default(cuid())
+  ordenId       String
+  productoId    String
+  cantidad      Int
+  costoUnitario Decimal  @db.Decimal(12, 2)
+  subtotal      Decimal  @db.Decimal(12, 2)
+
+  // Relaciones
+  orden    OrdenCompra @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+  producto Producto    @relation(fields: [productoId], references: [id], onDelete: Restrict)
+
+  @@index([ordenId])
+  @@index([productoId])
+  @@map("lineas_orden_compra")
+}
+
+/// Recepción de mercadería (parcial o total de una orden).
+model RecepcionMercaderia {
+  id          String   @id @default(cuid())
+  ordenId     String
+  fecha       DateTime @default(now())
+  usuarioId   String
+  notas       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  orden   OrdenCompra       @relation(fields: [ordenId], references: [id], onDelete: Restrict)
+  usuario  Usuario           @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  lineas  LineaRecepcion[]
+  costeo  CosteoImportacion?
+  lotes   LoteImportacion[]
+
+  @@index([ordenId])
+  @@index([fecha])
+  @@map("recepciones_mercaderia")
+}
+
+/// Línea de recepción.
+model LineaRecepcion {
+  id             String   @id @default(cuid())
+  recepcionId    String
+  productoId     String
+  cantidadRecibida Int
+
+  // Relaciones
+  recepcion RecepcionMercaderia @relation(fields: [recepcionId], references: [id], onDelete: Cascade)
+  producto  Producto             @relation(fields: [productoId], references: [id], onDelete: Restrict)
+
+  @@index([recepcionId])
+  @@index([productoId])
+  @@map("lineas_recepcion")
+}
+
+/// Costeo de importación: calcula el costo real por unidad de una recepción.
+/// Los totales (costoProductos, gastosTotal, costoTotal, costoUnitario) se
+/// calculan siempre en el servicio, nunca se escriben manualmente.
+model CosteoImportacion {
+  id                String        @id @default(cuid())
+  numero            String        @unique
+  recepcionId       String        @unique
+  ordenId           String
+  proveedorId       String
+  fecha             DateTime      @default(now())
+  moneda            String        @default("PEN")
+  tipoCambio        Decimal?      @db.Decimal(12, 4)
+
+  // Costo del proveedor — automático (total de la orden de compra).
+  costoProductos    Decimal       @db.Decimal(12, 2)
+
+  // Gastos de importación — editables.
+  comisionBancaria  Decimal       @db.Decimal(12, 2) @default(0)
+  comisionBancariaMoneda String   @default("PEN")
+  comisionPlataforma Decimal      @db.Decimal(12, 2) @default(0)
+  comisionPlataformaMoneda String @default("PEN")
+  courierFlete      Decimal       @db.Decimal(12, 2) @default(0)
+  courierFleteMoneda String       @default("PEN")
+  seguro            Decimal       @db.Decimal(12, 2) @default(0)
+  seguroMoneda      String        @default("PEN")
+  aduanas           Decimal       @db.Decimal(12, 2) @default(0)
+  aduanasMoneda     String        @default("PEN")
+  almacenaje        Decimal       @db.Decimal(12, 2) @default(0)
+  almacenajeMoneda  String        @default("PEN")
+  transporteLocal   Decimal       @db.Decimal(12, 2) @default(0)
+  transporteLocalMoneda String   @default("PEN")
+  otros             Decimal       @db.Decimal(12, 2) @default(0)
+  otrosMoneda       String        @default("PEN")
+
+  // Resultados calculados automáticamente.
+  gastosTotal       Decimal       @db.Decimal(12, 2)
+  costoTotal        Decimal       @db.Decimal(12, 2)
+  costoUnitario     Decimal       @db.Decimal(12, 2)
+
+  observaciones     String?
+  estado            EstadoCosteo  @default(BORRADOR)
+  usuarioId         String
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  // Relaciones
+  recepcion           RecepcionMercaderia @relation(fields: [recepcionId], references: [id], onDelete: Restrict)
+  orden               OrdenCompra         @relation(fields: [ordenId], references: [id], onDelete: Restrict)
+  proveedor           Proveedor           @relation(fields: [proveedorId], references: [id], onDelete: Restrict)
+  usuario             Usuario             @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  lotes               LoteImportacion[]
+  productosActualizados Producto[]
+
+  @@index([ordenId])
+  @@index([proveedorId])
+  @@index([fecha])
+  @@map("costeos_importacion")
+}
+
+/// Lote de inventario generado al confirmar un costeo de importación.
+/// Conserva el costo histórico de cada entrada sin modificar lotes previos.
+model LoteImportacion {
+  id            String   @id @default(cuid())
+  costeoId      String
+  recepcionId   String
+  productoId    String
+  cantidad      Int
+  costoUnitario Decimal  @db.Decimal(12, 2)
+  costoTotal    Decimal  @db.Decimal(12, 2)
+  createdAt     DateTime @default(now())
+
+  // Relaciones
+  costeo    CosteoImportacion  @relation(fields: [costeoId], references: [id], onDelete: Cascade)
+  recepcion RecepcionMercaderia @relation(fields: [recepcionId], references: [id], onDelete: Restrict)
+  producto  Producto            @relation(fields: [productoId], references: [id], onDelete: Restrict)
+
+  @@index([costeoId])
+  @@index([productoId])
+  @@map("lotes_importacion")
+}
+
+/// Movimiento de inventario (Kardex).
+model MovimientoInventario {
+  id              String         @id @default(cuid())
+  productoId      String
+  tipo            TipoMovimiento
+  cantidad        Int
+  stockAnterior   Int
+  stockPosterior  Int
+  referenciaTipo  TipoReferencia?
+  referenciaId    String?
+  motivo          String?
+  costoUnitario   Decimal?       @db.Decimal(12, 2) // costo del movimiento (entradas costeadas)
+  usuarioId       String
+  createdAt       DateTime       @default(now())
+
+  // Relaciones
+  producto Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  usuario  Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@index([productoId, createdAt])
+  @@index([referenciaTipo, referenciaId])
+  @@map("movimientos_inventario")
+}
+
+/// Gasto operativo.
+model Gasto {
+  id                String         @id @default(cuid())
+  categoria         String
+  descripcion       String
+  monto             Decimal        @db.Decimal(12, 2)
+  moneda            String         @default("PEN")
+  fecha             DateTime       @default(now())
+  proveedorId       String?
+  comprobanteTipo   TipoComprobante?
+  comprobanteNumero String?
+  archivoUrl        String?
+  usuarioId         String
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  // Relaciones
+  proveedor Proveedor? @relation(fields: [proveedorId], references: [id], onDelete: SetNull)
+  usuario   Usuario    @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@index([fecha])
+  @@index([categoria])
+  @@index([proveedorId])
+  @@map("gastos")
+}
+
+/// Registro de interacción con cliente.
+model Interaccion {
+  id          String   @id @default(cuid())
+  clienteId   String
+  usuarioId   String?
+  tipo        String   // WHATSAPP, EMAIL, LLAMADA, VISITA
+  fecha       DateTime @default(now())
+  resumen     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  usuario  Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  @@index([clienteId, fecha])
+  @@index([fecha])
+  @@map("interacciones")
+}
+
+/// Influencer de marketing — independiente de Clientes (B2C/B2B).
+model Influencer {
+  id                String   @id @default(cuid())
+  nombre            String
+  instagram         String?
+  tiktok            String?
+  youtube           String?
+  metaPublicaciones Int      @default(0) // meta mensual fijada por el admin
+  activo            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  usuarioId String   @unique
+  usuario   Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  metricas InfluencerMetrica[]
+  tareas   InfluencerTarea[]
+  objetivos InfluencerObjetivo[]
+
+  @@index([activo])
+  @@map("influencers")
+}
+
+/// Objetivo mensual único por influencer (ej. "subir 20 videos"). Lo define el admin.
+model InfluencerObjetivo {
+  id                 String   @id @default(cuid())
+  influencerId       String
+  mes                DateTime // Inicio del mes
+  descripcion        String
+  cantidadMeta       Int      @default(1)
+  cantidadCompletada Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  influencer Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+
+  @@unique([influencerId, mes])
+  @@index([influencerId, mes])
+  @@map("influencer_objetivos")
+}
+
+/// Tarea mensual asignada por el admin. El influencer marca avance (+1).
+model InfluencerTarea {
+  id                 String   @id @default(cuid())
+  influencerId       String
+  mes                DateTime // Inicio del mes
+  descripcion        String
+  cantidadMeta       Int      @default(1)
+  cantidadCompletada Int      @default(0)
+  activo             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  influencer Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+
+  @@index([influencerId, mes])
+  @@map("influencer_tareas")
+}
+
+/// Métricas mensuales de un influencer.
+model InfluencerMetrica {
+  id            String   @id @default(cuid())
+  influencerId  String
+  fechaInicio   DateTime // Inicio del mes
+  seguidores    Int      @default(0)
+  engagement    Float    @default(0) // tasa 0-100
+  alcance       Int      @default(0) // reach
+  vistas        Int      @default(0) // views
+  publicaciones Int      @default(0)
+  clics         Int      @default(0)
+  conversiones  Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  influencer Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+
+  @@unique([influencerId, fechaInicio])
+  @@index([influencerId, fechaInicio])
+  @@map("influencers_metricas")
+}
+
+/// Bandeja de entrada. El webhook encola aquí; un job la procesa.
+/// Desacopla la recepción del procesamiento para no perder mensajes.
+model MensajeEntrante {
+  id          String        @id @default(cuid())
+  canal       CanalMensaje
+  telefono    String? // Remitente (WhatsApp)
+  email       String?
+  nombre      String?
+  contenido   String? // Texto del mensaje / resumen
+  payload     Json // Payload crudo del proveedor
+  externalId  String? // ID del proveedor para idempotencia
+  estado      EstadoMensaje @default(PENDIENTE)
+  intentos    Int           @default(0)
+  error       String? // Último error de procesamiento
+  procesadoEn DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([canal, externalId]) // Idempotencia: no procesar 2x el mismo evento
+  @@index([estado, createdAt])
+  @@map("mensajes_entrantes")
+}

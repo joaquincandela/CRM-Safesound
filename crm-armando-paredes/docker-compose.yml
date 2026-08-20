@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: crm
+      POSTGRES_PASSWORD: crm
+      POSTGRES_DB: crm_armando_paredes
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crm -d crm_armando_paredes"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://crm:crm@db:5432/crm_armando_paredes?schema=public
+      JWT_SECRET: ${JWT_SECRET:-cambiar-en-produccion}
+      JWT_EXPIRES_IN: 12h
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-cambiar-webhook-secret}
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
