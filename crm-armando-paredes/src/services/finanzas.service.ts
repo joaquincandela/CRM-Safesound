@@ -1,10 +1,13 @@
 import { prisma } from "../lib/prisma.js";
 
+// Estados que representan una venta efectiva (dinero que entra a la empresa).
+const ESTADOS_VENTA = ["PAGADO", "PREPARANDO", "ENVIADO", "ENTREGADO", "COMPLETO"] as const;
+
 export async function obtenerResumenFinanciero(desde: Date, hasta: Date) {
-  // Total de ventas (pedidos pagados)
+  // Total de ventas (pedidos con venta efectiva)
   const ventas = await prisma.pedido.aggregate({
     where: {
-      estado: "PAGADO",
+      estado: { in: [...ESTADOS_VENTA] },
       createdAt: { gte: desde, lte: hasta },
     },
     _sum: { total: true },
@@ -40,7 +43,7 @@ export async function obtenerResumenFinanciero(desde: Date, hasta: Date) {
     _count: true,
   });
 
-  const ventasTotal = Number(ventas._sum.total || 0);
+  const ventasTotal = Number(ventas._sum?.total || 0);
   const gastosTotal = Number(gastos._sum.monto || 0);
 
   return {

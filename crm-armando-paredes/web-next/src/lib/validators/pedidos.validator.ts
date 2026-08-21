@@ -12,7 +12,7 @@ export const crearPedidoSchema = z.object({
   clienteEmail: z.string().email().optional().or(z.literal("")).optional(),
   clienteDocumento: z.string().max(50).optional(),
   clienteDireccion: z.string().max(300).optional(),
-  estado: z.enum(["PENDIENTE", "PAGADO", "PREPARANDO", "ENVIADO", "ENTREGADO", "CANCELADO"]).default("PENDIENTE"),
+  estado: z.enum(["PENDIENTE", "PAGADO", "PREPARANDO", "ENVIADO", "ENTREGADO", "COMPLETO", "CANCELADO"]).default("PENDIENTE"),
   descuento: z.number().nonnegative().default(0),
   igv: z.number().nonnegative().default(0),
   notas: z.string().optional(),
@@ -20,7 +20,7 @@ export const crearPedidoSchema = z.object({
 });
 
 export const actualizarPedidoSchema = z.object({
-  estado: z.enum(["PENDIENTE", "PAGADO", "PREPARANDO", "ENVIADO", "ENTREGADO", "CANCELADO"]).optional(),
+  estado: z.enum(["PENDIENTE", "PAGADO", "PREPARANDO", "ENVIADO", "ENTREGADO", "COMPLETO", "CANCELADO"]).optional(),
   descuento: z.number().nonnegative().optional(),
   igv: z.number().nonnegative().optional(),
   notas: z.string().optional(),

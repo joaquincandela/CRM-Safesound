@@ -1,5 +1,8 @@
 import { prisma } from "../lib/prisma.js";
 
+// Estados que representan una venta efectiva (dinero que entra a la empresa).
+const ESTADOS_VENTA = ["PAGADO", "PREPARANDO", "ENVIADO", "ENTREGADO", "COMPLETO"] as const;
+
 export async function obtenerKPIsDashboard() {
   const inicioMes = new Date();
   inicioMes.setDate(1);
@@ -15,8 +18,8 @@ export async function obtenerKPIsDashboard() {
       prisma.proveedor.count(),
       prisma.proveedor.count({ where: { activo: true } }),
       prisma.pedido.count({ where: { createdAt: { gte: inicioMes } } }),
-      prisma.pedido.count({ where: { createdAt: { gte: inicioMes }, estado: "PAGADO" } }),
-      prisma.pedido.aggregate({ where: { createdAt: { gte: inicioMes }, estado: "PAGADO" }, _sum: { total: true } }),
+      prisma.pedido.count({ where: { createdAt: { gte: inicioMes }, estado: { in: [...ESTADOS_VENTA] } } }),
+      prisma.pedido.aggregate({ where: { createdAt: { gte: inicioMes }, estado: { in: [...ESTADOS_VENTA] } }, _sum: { total: true } }),
       prisma.ordenCompra.count({ where: { estado: "BORRADOR" } }),
       prisma.ordenCompra.count({ where: { estado: { in: ["CONFIRMADA", "EN_FABRICACION", "EN_TRANSITO"] } } }),
       prisma.gasto.aggregate({ where: { fecha: { gte: inicioMes, lte: hasta } }, _sum: { monto: true } }),
@@ -60,7 +63,7 @@ export async function obtenerKPIsDashboard() {
       console.error("Error calculando stock bajo:", e);
     }
 
-    const ventasTotal = Number(ventasMes._sum.total || 0);
+    const ventasTotal = Number(ventasMes._sum?.total || 0);
 
     // ------------------------------------------------------------------------
     // Rentabilidad con costo real (siempre proviene del Costeo de Importación).

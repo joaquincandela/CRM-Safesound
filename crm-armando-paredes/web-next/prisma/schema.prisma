@@ -50,6 +50,7 @@ enum EstadoPedido {
   PREPARANDO
   ENVIADO
   ENTREGADO
+  COMPLETO
   CANCELADO
 }
 

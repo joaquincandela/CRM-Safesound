@@ -3,7 +3,7 @@ import { NotFound } from "../lib/errors.js";
 import type { CrearPedidoInput, ActualizarPedidoInput } from "../validators/pedidos.validator.js";
 
 // Estados que consumen stock del inventario (venta efectiva).
-const ESTADOS_CONSUME_STOCK = ["PAGADO", "PREPARANDO", "ENVIADO", "ENTREGADO"];
+const ESTADOS_CONSUME_STOCK = ["PAGADO", "PREPARANDO", "ENVIADO", "ENTREGADO", "COMPLETO"];
 
 function consumeStock(estado?: string | null): boolean {
   return !!estado && ESTADOS_CONSUME_STOCK.includes(estado);

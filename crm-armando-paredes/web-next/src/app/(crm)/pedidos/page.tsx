@@ -205,6 +205,7 @@ export default function PedidosPage() {
       case "PREPARANDO": return "bg-blue/15 text-blue";
       case "ENVIADO": return "bg-purple/15 text-purple";
       case "ENTREGADO": return "bg-green/15 text-green";
+      case "COMPLETO": return "bg-green/15 text-green";
       case "CANCELADO": return "bg-red/15 text-red";
       default: return "bg-gray/15 text-gray";
     }
@@ -293,7 +294,7 @@ export default function PedidosPage() {
                 <option value="PREPARANDO">En preparacion</option>
                 <option value="ENVIADO">Enviado</option>
                 <option value="ENTREGADO">Entregado</option>
-                <option value="CANCELADO">Cancelado</option>
+                <option value="COMPLETO">Completado</option>
               </select>
             </div>
 
@@ -486,7 +487,7 @@ export default function PedidosPage() {
                     <option value="PREPARANDO">En preparación</option>
                     <option value="ENVIADO">Enviado</option>
                     <option value="ENTREGADO">Entregado</option>
-                    <option value="CANCELADO">Cancelado</option>
+                    <option value="COMPLETO">Completado</option>
                   </select>
                 </div>
                 <div>
