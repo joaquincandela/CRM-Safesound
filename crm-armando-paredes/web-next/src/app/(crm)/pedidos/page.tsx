@@ -173,12 +173,21 @@ export default function PedidosPage() {
 
   const handleEstadoChange = async (pedidoId: string, nuevoEstado: string) => {
     try {
-      await apiClient.patch(`/pedidos/${pedidoId}`, { estado: nuevoEstado });
-      fetchPedidos(q);
-      showToast("ok", "Estado actualizado");
+      const actualizado = await apiClient.patch<Pedido>(`/pedidos/${pedidoId}`, { estado: nuevoEstado });
+      setPedidos((prev) => prev.map((p) => (p.id === pedidoId ? actualizado : p)));
+      if (selectedPedido?.id === pedidoId) setSelectedPedido(actualizado);
+      showToast(
+        "ok",
+        nuevoEstado === "COMPLETO"
+          ? "Pedido completado: stock descontado e ingreso registrado"
+          : nuevoEstado === "PAGADO"
+            ? "Pago registrado: stock descontado e ingreso registrado"
+            : "Estado actualizado",
+      );
     } catch (error) {
       console.error("Error updating estado:", error);
       showToast("err", error instanceof ApiError ? error.message : "Error de conexion al actualizar estado");
+      fetchPedidos(q);
     }
   };
 
@@ -377,10 +386,21 @@ export default function PedidosPage() {
                 <td className="px-4 py-3">{pedido.clienteNombre || pedido.cliente?.nombre || "—"}</td>
                 <td className="px-4 py-3 text-xs text-ink-muted">{new Date(pedido.createdAt).toLocaleDateString()}</td>
                 <td className="px-4 py-3 tabular-nums font-semibold">S/ {Number(pedido.total).toFixed(2)}</td>
-                <td className="px-4 py-3">
-                  <span className={`inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-2xs font-semibold ${getEstadoColor(pedido.estado)}`}>
-                    {pedido.estado.replace(/_/g, " ")}
-                  </span>
+                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                  <select
+                    className={`cursor-pointer rounded-pill border-none px-2 py-1 text-2xs font-semibold focus:outline-none ${getEstadoColor(pedido.estado)}`}
+                    value={pedido.estado}
+                    onChange={(e) => handleEstadoChange(pedido.id, e.target.value)}
+                    aria-label={`Estado del pedido ${pedido.numero}`}
+                  >
+                    <option value="PENDIENTE">Pendiente</option>
+                    <option value="PAGADO">Pagado</option>
+                    <option value="PREPARANDO">En preparacion</option>
+                    <option value="ENVIADO">Enviado</option>
+                    <option value="ENTREGADO">Entregado</option>
+                    <option value="COMPLETO">Completado</option>
+                    {pedido.estado === "CANCELADO" && <option value="CANCELADO">Cancelado</option>}
+                  </select>
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">

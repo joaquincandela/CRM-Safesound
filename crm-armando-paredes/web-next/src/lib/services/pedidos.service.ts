@@ -220,10 +220,10 @@ export async function actualizarPedido(id: string, data: ActualizarPedidoInput, 
   if (!pedido) throw NotFound("Pedido");
 
   // Si el estado pasa a uno que consume stock, descontar inventario.
-  // Si se cancela un pedido que ya consumió stock, restaurarlo.
+  // Si se mueve a un estado que ya no consume stock (CANCELADO/PENDIENTE), restaurarlo.
   const nuevoEstado = data.estado;
   const debeDescontar = consumeStock(nuevoEstado) && !consumeStock(pedido.estado);
-  const debeRestaurar = nuevoEstado === "CANCELADO" && consumeStock(pedido.estado);
+  const debeRestaurar = !consumeStock(nuevoEstado) && consumeStock(pedido.estado);
 
   return prisma.$transaction(async (tx) => {
     const updated = await tx.pedido.update({
